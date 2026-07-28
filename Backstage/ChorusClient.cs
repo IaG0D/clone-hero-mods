@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
-using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -60,22 +60,25 @@ public sealed class ChorusClient : IDisposable
         if (_cache.TryGetValue(key, out var cached)) return cached;
 
         // Corpo identico ao do Bridge; "source" identifica a origem pro servidor.
-        var body = new
+        // JSON manual (sem System.Net.Http.Json): o runtime do BepInEx nao traz esse pacote.
+        var body = JsonSerializer.Serialize(new Dictionary<string, object?>
         {
-            search = query,
-            per_page = 25,
-            page,
-            instrument = (string?)null,
-            difficulty = (string?)null,
-            drumType = (string?)null,
-            drumsReviewed = true,
-            sort = (object?)null,
-            source = "bridge",
-        };
+            ["search"] = query,
+            ["per_page"] = 25,
+            ["page"] = page,
+            ["instrument"] = null,
+            ["difficulty"] = null,
+            ["drumType"] = null,
+            ["drumsReviewed"] = true,
+            ["sort"] = null,
+            ["source"] = "bridge",
+        });
 
-        using var response = await _http.PostAsJsonAsync($"{Api}/search", body, ct);
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var response = await _http.PostAsync($"{Api}/search", content, ct);
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<SearchResult>(cancellationToken: ct)
+        var json = await response.Content.ReadAsStringAsync(ct);
+        var result = JsonSerializer.Deserialize<SearchResult>(json)
                      ?? throw new InvalidOperationException("resposta vazia do /search");
 
         _cache[key] = result;
