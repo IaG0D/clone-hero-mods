@@ -20,8 +20,30 @@ public class BackstagePlugin : BasePlugin
     public override void Load()
     {
         L = Log;
-        L.LogInfo("Backstage 0.2.0 — by IaG0D (F5 abre/fecha)");
+        L.LogInfo("Backstage 0.4.0 — by IaG0D (F5 abre/fecha)");
         AddComponent<BackstageUI>();
+
+        // O Control Remapper abre com Espaco por fora dos mapas do Rewired (Input System
+        // direto), entao desligar mapas nao basta: com o painel aberto, o Open() dele
+        // simplesmente nao roda.
+        try
+        {
+            var harmony = new HarmonyLib.Harmony(Id);
+            int patched = 0;
+            foreach (var m in typeof(Rewired.UI.ControlMapper.ControlMapper).GetMethods())
+                if (m.Name is "Open" or "Toggle" && !m.IsGenericMethod)
+                {
+                    try
+                    {
+                        harmony.Patch(m, prefix: new HarmonyLib.HarmonyMethod(
+                            typeof(BackstageUI).GetMethod(nameof(BackstageUI.BlockWhenPanelOpen))));
+                        patched++;
+                    }
+                    catch { }
+                }
+            L.LogInfo($"ControlMapper: {patched} metodo(s) guardado(s) contra abrir com o painel ativo.");
+        }
+        catch (Exception e) { L.LogWarning($"guarda do ControlMapper falhou: {e.Message}"); }
     }
 }
 
@@ -59,6 +81,12 @@ public class BackstageUI : MonoBehaviour
     static readonly string[] FieldValues = { null, "artist", "name", "charter", "album" };
     static readonly string[] FieldNames = { "Em: Tudo", "Em: Artista", "Em: Música", "Em: Charter", "Em: Álbum" };
     static int _inst, _diff, _field;
+    static int _scroll;          // primeira linha visivel dos resultados
+    static bool _loadingMore;    // buscando a proxima pagina da API
+
+    /// <summary>Prefix Harmony: com o painel aberto, bloqueia o metodo original (ex.: abrir
+    /// o Control Remapper com Espaco).</summary>
+    public static bool BlockWhenPanelOpen() => !_visible;
 
     static string SongsDir => Path.Combine(BepInEx.Paths.GameRootPath, "Songs", "Backstage");
     static readonly string CmdPath = Path.Combine(BepInEx.Paths.GameRootPath, "backstage_cmd.txt");
@@ -87,6 +115,11 @@ public class BackstageUI : MonoBehaviour
                     else if (c is '\n' or '\r') StartSearch();
                     else if (!char.IsControl(c)) _query += c;
                 }
+
+                // scroll dos resultados pela roda do mouse
+                var wheel = Input.mouseScrollDelta.y;
+                if (wheel > 0f) Scroll(-1);
+                else if (wheel < 0f) Scroll(1);
             }
         }
         catch { /* input legado indisponivel: cmd cobre */ }
@@ -113,7 +146,10 @@ public class BackstageUI : MonoBehaviour
             var players = Rewired.ReInput.players;
             for (int i = 0; i < players.playerCount; i++)
                 players.GetPlayer(i).controllers.maps.SetAllMapsEnabled(enabled);
-            BackstagePlugin.L.LogInfo($"input do jogo {(enabled ? "religado" : "bloqueado")}");
+            // O system player fica fora do laco acima e e ele que abre o Control Remapper
+            // com Espaco — sem desligar aqui, digitar espaco na busca abria o remapper.
+            players.SystemPlayer?.controllers?.maps?.SetAllMapsEnabled(enabled);
+            BackstagePlugin.L.LogInfo($"input do jogo {(enabled ? "religado" : "bloqueado")} (players + system)");
         }
         catch (Exception e)
         {
@@ -142,10 +178,41 @@ public class BackstageUI : MonoBehaviour
 
     static string Norm(string s) => (s ?? "").Trim().ToLowerInvariant();
 
+    /// <summary>Move a janela de resultados; chegando perto do fim, puxa a proxima pagina.</summary>
+    static void Scroll(int delta)
+    {
+        if (_results == null) return;
+        _scroll = Math.Max(0, Math.Min(_scroll + delta, Math.Max(0, _results.Data.Count - 8)));
+
+        // faltam menos de 8 pra acabar o carregado e a API tem mais? busca proxima pagina.
+        if (!_loadingMore && !_busy && FieldValues[_field] == null &&
+            _scroll + 16 > _results.Data.Count && _results.Data.Count < _results.Found)
+        {
+            _loadingMore = true;
+            string query = _query;
+            int page = _results.Data.Count / 25 + 1;
+            string inst = InstValues[_inst], diff = DiffValues[_diff];
+            Task.Run(async () =>
+            {
+                try
+                {
+                    var more = await _chorus.SearchAsync(query, inst, diff, page);
+                    _onMain.Enqueue(() =>
+                    {
+                        if (_results != null && _query == query) _results.Data.AddRange(more.Data);
+                        _loadingMore = false;
+                    });
+                }
+                catch { _onMain.Enqueue(() => _loadingMore = false); }
+            });
+        }
+    }
+
     static void StartSearch()
     {
         if (_busy || string.IsNullOrWhiteSpace(_query)) return;
         _busy = true;
+        _scroll = 0;
         _status = $"buscando \"{_query}\"...";
         _chorus ??= new ChorusClient();
 
@@ -330,9 +397,14 @@ public class BackstageUI : MonoBehaviour
             GUI.Label(new Rect(x + 662, rowY, 46, 20), $"<color={Dim}><i>tempo</i></color>");
             rowY += 24;
 
+            // botoes de scroll na borda direita (a roda do mouse tambem funciona)
+            if (GUI.Button(new Rect(x + W - 36, rowY, 24, 100), "▲")) Scroll(-3);
+            if (GUI.Button(new Rect(x + W - 36, rowY + 112, 24, 100), "▼")) Scroll(3);
+
             int shown = 0;
-            foreach (var chart in _results.Data)
+            for (int idx = _scroll; idx < _results.Data.Count; idx++)
             {
+                var chart = _results.Data[idx];
                 if (shown >= 8) break;
                 Panel(new Rect(x + 8, rowY - 2, W - 16, 26), shown % 2 == 0 ? _texRowA : _texRowB);
                 shown++;
@@ -359,7 +431,7 @@ public class BackstageUI : MonoBehaviour
                     diff is > 0 ? $"<color={Gold}>{diff}</color>" : $"<color={Dim}>-</color>");
                 GUI.Label(new Rect(x + 662, rowY, 46, 22), $"<color={Dim}>{len}</color>");
 
-                if (GUI.Button(new Rect(x + W - 92, rowY - 1, 76, 23), ownedChart ? "de novo" : "Baixar"))
+                if (GUI.Button(new Rect(x + W - 122, rowY - 1, 76, 23), ownedChart ? "de novo" : "Baixar"))
                 {
                     _queue.Enqueue(chart);
                     _status = $"na fila: {chart.Name} ({_queue.Count} aguardando)";
@@ -367,8 +439,11 @@ public class BackstageUI : MonoBehaviour
                 rowY += 28;
             }
 
+            var extra = FieldValues[_field] == null
+                ? " — role com a RODA do mouse"
+                : " — busca por campo mostra as primeiras 25";
             GUI.Label(new Rect(x + 16, rowY + 2, W - 32, 20),
-                $"<color={Dim}><size=11>mostrando {Math.Min(8, _results.Data.Count)} de {_results.Found} — refine a busca para ver outros</size></color>");
+                $"<color={Dim}><size=11>mostrando {_scroll + 1}–{Math.Min(_scroll + 8, _results.Data.Count)} de {_results.Found}{extra}{(_loadingMore ? " · carregando mais..." : "")}</size></color>");
         }
         else if (_results != null)
         {
@@ -380,17 +455,19 @@ public class BackstageUI : MonoBehaviour
         if (_downloading != null)
         {
             var pct = _dlTotal > 0 ? (float)_dlDone / _dlTotal : 0f;
-            Panel(new Rect(x + 16, footY, W - 32, 16), _texBarBg);
-            Panel(new Rect(x + 16, footY, (W - 32) * pct, 16), _texBarFill);
-            GUI.Label(new Rect(x + 22, footY - 2, W - 44, 20),
+            Panel(new Rect(x + 16, footY - 22, W - 32, 16), _texBarBg);
+            Panel(new Rect(x + 16, footY - 22, (W - 32) * pct, 16), _texBarFill);
+            GUI.Label(new Rect(x + 22, footY - 24, W - 44, 20),
                 $"<size=11><color=#10151c><b>{_downloading.Name}  {_dlDone / 1048576f:F1}/{(_dlTotal > 0 ? _dlTotal / 1048576f : 0):F1} MB · fila: {_queue.Count}</b></color></size>");
         }
+        // status em linha propria, LONGE do botao de scan (colado parecia "escanear 132")
+        GUI.Label(new Rect(x + 16, footY - 2, W - 32, 20), $"<color={Dim}>{_status}</color>");
+
         Panel(new Rect(x + 8, footY + 18, W - 16, 1), _texHeader); // separador do rodape
-        var scanLabel = _completed > 0 ? $"Escanear ({_completed} nova{(_completed > 1 ? "s" : "")})" : "Escanear biblioteca";
-        if (GUI.Button(new Rect(x + 16, footY + 24, 150, 28), scanLabel)) TriggerScan();
-        GUI.Label(new Rect(x + 176, footY + 28, W - 192, 22), $"<color={Dim}>{_status}</color>");
-        GUI.Label(new Rect(x + W - 330, footY + 46, 320, 18),
-            $"<size=10><color={Dim}>escaneie UMA vez depois de baixar tudo — e o Scan Songs nativo do jogo</color></size>");
+        var scanLabel = _completed > 0 ? $"Escanear ({_completed} baixada{(_completed > 1 ? "s" : "")})" : "Escanear biblioteca";
+        if (GUI.Button(new Rect(x + 16, footY + 24, 170, 28), scanLabel)) TriggerScan();
+        GUI.Label(new Rect(x + 196, footY + 28, W - 212, 20),
+            $"<size=11><color={Dim}>baixe tudo primeiro e escaneie UMA vez — o scan e o da biblioteca inteira (rapido, usa cache)</color></size>");
     }
 
     // ---- canal de comando p/ teste autonomo (sai na 1.0) ----
