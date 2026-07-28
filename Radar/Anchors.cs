@@ -54,6 +54,12 @@ internal static class Anchors
     public static void RunLibraryFilter(Il2CppSystem.Func<SongEntry, bool> keep, string label) =>
         Il2CppLibrary.Method_Public_Static_Void_Func_2_SongEntry_Boolean_String_Boolean_0(keep, label, false);
 
+    /// <summary>Troca o modo de sort pelo NOME DE EXIBICAO ("Song", "Artist", "Album", "Genre",
+    /// "Charter", "Playlist"). Descoberto via espiao: o jogo chama isto com "Song" ao montar a
+    /// lista por titulo. "Song" e o nome de exibicao do sort por Name.</summary>
+    public static void SetSort(string displayName) =>
+        Il2CppLibrary.Method_Public_Static_Void_String_0(displayName);
+
     const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic
                            | BindingFlags.Instance | BindingFlags.Static;
 

@@ -11,7 +11,7 @@ using Il2CppSection = ObjectPublicStLi1SoBoInStInInUnique;
 
 namespace Radar;
 
-[BepInPlugin(Id, "Radar", "0.9.0")]
+[BepInPlugin(Id, "Radar", "1.0.0")]
 public class RadarPlugin : BasePlugin
 {
     public const string Id = "com.iag0d.radar";
@@ -21,7 +21,7 @@ public class RadarPlugin : BasePlugin
     public override void Load()
     {
         L = Log;
-        L.LogInfo("Radar 0.9.0 — by IaG0D");
+        L.LogInfo("Radar 1.0.0 — by IaG0D");
 
         var search = Anchors.Method(typeof(SongSelectSearch), Anchors.SearchOverSections, L);
         if (search == null) return; // ancora perdida ja foi logada; nao derruba o jogo.
@@ -140,6 +140,7 @@ internal static class SearchHook
             new Func<SongEntry, bool>(song => song != null && matched.Contains(song.Pointer)));
 
         Anchors.RunLibraryFilter(_keep, $"Radar: {query}");
+        RebuildView(); // sem isso a tela so acompanha os dados por sorte de viewport
         _filterOn = true;
         sw.Stop();
 
@@ -152,9 +153,21 @@ internal static class SearchHook
         if (!_filterOn) return;
         _keep = DelegateSupport.ConvertDelegate<Il2CppSystem.Func<SongEntry, bool>>(
             new Func<SongEntry, bool>(_ => true));
-        Anchors.RunLibraryFilter(_keep, string.Empty);
+        // Rotulo NUNCA vazio: rotulo vazio corrompe a lista de forma irreversivel
+        // (o bug do "filtro nunca sai"). Comprovado por screenshot em 2026-07-28.
+        Anchors.RunLibraryFilter(_keep, "Radar");
+        RebuildView();
         _filterOn = false;
         RadarPlugin.L.LogInfo("lista completa restaurada.");
+    }
+
+    /// <summary>isReturningFromSearch e o flag que o Update do SongSelect le para reconstruir
+    /// a view a partir dos dados filtrados. Achado por sonda com screenshot; sem ele a lista
+    /// visivel fica defasada ou em branco.</summary>
+    static void RebuildView()
+    {
+        var select = UnityEngine.Object.FindObjectOfType<SongSelect>();
+        if (select != null) select.isReturningFromSearch = true;
     }
 
     /// <summary>Indice sai da lista-mestre (nao das secoes visiveis, que encolhem com filtro).
