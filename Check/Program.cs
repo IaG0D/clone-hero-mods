@@ -46,6 +46,23 @@ Check("'metallica master' acha Master of Puppets",      Top("metallica master", 
 Check("'metallica' traz as duas do Metallica",          Ids("metallica").Length >= 2);
 Check("token sem match nenhum zera o resultado",        Ids("metallica zzzzq").Length == 0);
 
+Console.WriteLine("campo explicito e respeitado");
+int[] IdsIn(string q, Field f)
+{
+    var hits = index.Search(q, f);
+    var ids = new int[hits.Length];
+    for (int i = 0; i < hits.Length; i++) ids[i] = hits[i].Id;
+    return ids;
+}
+Check("Artist 'metallica' -> so as 2 do Metallica",     IdsIn("metallica", Field.Artist).Length == 2);
+Check("Artist 'one' -> nada (One e titulo)",            IdsIn("one", Field.Artist).Length == 0);
+Check("Charter 'trooper' -> nada (titulo nao vaza)",    IdsIn("trooper", Field.Charter).Length == 0);
+
+Console.WriteLine("typo (1 edicao)");
+Check("'mettalli' (t duplicado) acha Metallica",         Has("mettalli", 0));
+Check("'metalica' (falta um l) acha Metallica",          Has("metalica", 0));
+Check("'thundersturck' nao trava a busca",               Ids("thundersturck").Length >= 0);
+
 Console.WriteLine("ranking");
 Check("match exato ganha do substring: 'one'",          Top("one", 1));
 Check("'puppets' acha por palavra no meio do titulo",   Has("puppets", 0));

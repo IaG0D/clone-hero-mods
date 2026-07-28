@@ -11,6 +11,7 @@ public readonly struct Entry
 {
     public readonly int Id;
     public readonly string Title, Artist, Album, Genre, Charter;
+    public readonly string[] TitleW, ArtistW, AlbumW, GenreW, CharterW; // palavras, p/ typo-match
 
     public Entry(int id, string title, string artist, string album, string genre, string charter)
     {
@@ -20,7 +21,12 @@ public readonly struct Entry
         Album = Text.Normalize(album);
         Genre = Text.Normalize(genre);
         Charter = Text.Normalize(charter);
+        TitleW = Split(Title); ArtistW = Split(Artist); AlbumW = Split(Album);
+        GenreW = Split(Genre); CharterW = Split(Charter);
     }
+
+    static string[] Split(string s) =>
+        s.Length == 0 ? Array.Empty<string>() : s.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 }
 
 public readonly struct Hit
@@ -29,6 +35,10 @@ public readonly struct Hit
     public readonly int Score;
     public Hit(int id, int score) { Id = id; Score = score; }
 }
+
+/// <summary>Campo escolhido na UI do jogo. All = modo padrao "Song", que o Radar trata
+/// como multi-campo; os demais sao escolha explicita do jogador e valem so no campo.</summary>
+public enum Field { All, Title, Artist, Album, Genre, Charter }
 
 public static class Text
 {
@@ -73,7 +83,7 @@ public sealed class SongIndex
     const int Prefix = 800;
     const int WordPrefix = 600;
     const int Substring = 400;
-    const int FuzzyBase = 60;
+    const int NearMatch = 300;   // typo de 1 edicao ("mettalli" -> "metallica")
 
     // Titulo pesa mais que artista, que pesa mais que o resto.
     const int TitleWeight = 3;
@@ -82,8 +92,9 @@ public sealed class SongIndex
     readonly Entry[] _entries;
 
     // Pilha de resultados: ao digitar mais uma letra filtramos o resultado anterior,
-    // nao a biblioteca inteira. Ao apagar, desempilha.
+    // nao a biblioteca inteira. Ao apagar, desempilha. Trocar de campo invalida a pilha.
     readonly List<(string Query, int[] Ids)> _stack = new();
+    Field _stackField = Field.All;
 
     public SongIndex(IReadOnlyList<Entry> entries)
     {
@@ -93,10 +104,12 @@ public sealed class SongIndex
 
     public int Count => _entries.Length;
 
-    public Hit[] Search(string rawQuery)
+    public Hit[] Search(string rawQuery, Field field = Field.All)
     {
         var normalized = Text.Normalize(rawQuery);
         var tokens = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (field != _stackField) { _stack.Clear(); _stackField = field; }
 
         if (tokens.Length == 0)
         {
@@ -115,7 +128,7 @@ public sealed class SongIndex
         {
             for (int i = 0; i < _entries.Length; i++)
             {
-                int score = Score(_entries[i], tokens);
+                int score = Score(_entries[i], tokens, field);
                 if (score > 0) hits.Add(new Hit(i, score));
             }
         }
@@ -123,7 +136,7 @@ public sealed class SongIndex
         {
             foreach (int id in candidates)
             {
-                int score = Score(_entries[id], tokens);
+                int score = Score(_entries[id], tokens, field);
                 if (score > 0) hits.Add(new Hit(id, score));
             }
         }
@@ -141,29 +154,42 @@ public sealed class SongIndex
 
     /// <summary>AND entre tokens, OR entre campos: todo token precisa achar algum campo.
     /// E isso que faz "metallica master" achar Master of Puppets — artista e titulo na mesma query.</summary>
-    static int Score(in Entry e, string[] tokens)
+    static int Score(in Entry e, string[] tokens, Field field)
     {
         int total = 0;
         foreach (var token in tokens)
         {
-            int best = FieldScore(e.Title, token) * TitleWeight;
-            int artist = FieldScore(e.Artist, token) * ArtistWeight;
-            if (artist > best) best = artist;
-
-            if (best < Exact)
+            int best;
+            switch (field)
             {
-                int other = Math.Max(FieldScore(e.Album, token),
-                            Math.Max(FieldScore(e.Charter, token), FieldScore(e.Genre, token)));
-                if (other > best) best = other;
+                // Escolha explicita do jogador: so o campo escolhido conta.
+                case Field.Title:   best = FieldScore(e.Title, e.TitleW, token); break;
+                case Field.Artist:  best = FieldScore(e.Artist, e.ArtistW, token); break;
+                case Field.Album:   best = FieldScore(e.Album, e.AlbumW, token); break;
+                case Field.Genre:   best = FieldScore(e.Genre, e.GenreW, token); break;
+                case Field.Charter: best = FieldScore(e.Charter, e.CharterW, token); break;
+
+                default: // modo padrao: multi-campo, e o que faz "metallica master" funcionar.
+                    best = FieldScore(e.Title, e.TitleW, token) * TitleWeight;
+                    int artist = FieldScore(e.Artist, e.ArtistW, token) * ArtistWeight;
+                    if (artist > best) best = artist;
+                    if (best < Exact)
+                    {
+                        int other = Math.Max(FieldScore(e.Album, e.AlbumW, token),
+                                    Math.Max(FieldScore(e.Charter, e.CharterW, token),
+                                             FieldScore(e.Genre, e.GenreW, token)));
+                        if (other > best) best = other;
+                    }
+                    break;
             }
 
-            if (best == 0) return 0; // token sem match em campo nenhum: musica fora.
+            if (best == 0) return 0; // token sem match: musica fora.
             total += best;
         }
         return total;
     }
 
-    static int FieldScore(string field, string token)
+    static int FieldScore(string field, string[] words, string token)
     {
         if (field.Length == 0) return 0;
         if (field == token) return Exact;
@@ -177,24 +203,33 @@ public sealed class SongIndex
         if (at > 0 && field[at - 1] == ' ') return WordPrefix;
         if (at >= 0) return Substring;
 
-        return Subsequence(field, token);
+        // Typo: token a 1 edicao de distancia do prefixo de alguma palavra.
+        // Curto demais gera falso positivo, por isso o piso de 4 letras.
+        if (token.Length >= 4)
+            foreach (var word in words)
+                if (NearPrefix(word, token)) return NearMatch;
+
+        return 0;
+        // ponytail: subsequencia estilo fzf foi removida de proposito — em biblioteca de 15k
+        // ela enchia o resultado de falso positivo e o filtro parecia bugado. NearPrefix cobre typo.
     }
 
-    /// <summary>Match fuzzy estilo fzf: as letras do token aparecem em ordem, nao precisam ser vizinhas.
-    /// Sequencia contigua maior pontua mais, senao "abc" casaria com qualquer coisa.</summary>
-    static int Subsequence(string hay, string needle)
+    /// <summary>Token casa com prefixo da palavra tolerando UMA edicao (troca, sobra ou falta
+    /// de letra). "mettalli" e "metalica" casam com "metallica"; subsequencia pura nao pega
+    /// letra duplicada, e typo de digitacao rapida e quase sempre uma edicao so.</summary>
+    static bool NearPrefix(string word, string token)
     {
-        if (needle.Length < 2) return 0; // uma letra so casaria com metade da biblioteca.
+        int i = 0;
+        while (i < token.Length && i < word.Length && token[i] == word[i]) i++;
+        if (i == token.Length) return true;               // token e prefixo exato
+        return Rest(token, i + 1, word, i + 1)            // troca de letra
+            || Rest(token, i + 1, word, i)                // letra sobrando no token
+            || Rest(token, i, word, i + 1);               // letra faltando no token
+    }
 
-        int from = 0, streak = 0, longest = 0;
-        for (int i = 0; i < needle.Length; i++)
-        {
-            int found = hay.IndexOf(needle[i], from);
-            if (found < 0) return 0;
-            streak = (found == from && i > 0) ? streak + 1 : 1;
-            if (streak > longest) longest = streak;
-            from = found + 1;
-        }
-        return FuzzyBase + longest * 5;
+    static bool Rest(string token, int ti, string word, int wi)
+    {
+        while (ti < token.Length && wi < word.Length && token[ti] == word[wi]) { ti++; wi++; }
+        return ti == token.Length; // resto do token casou como prefixo do resto da palavra
     }
 }

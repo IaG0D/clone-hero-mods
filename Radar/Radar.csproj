@@ -28,6 +28,7 @@
     <Reference Include="$(CHDir)\BepInEx\interop\Il2CppSystem.Core.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\Unity.TextMeshPro.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\CloneHero.dll" Private="false" />
   </ItemGroup>
 
