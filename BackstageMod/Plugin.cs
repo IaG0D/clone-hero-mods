@@ -177,6 +177,15 @@ public class BackstageUI : MonoBehaviour
         }
         _ownedFrom = master.Count;
         BackstagePlugin.L.LogInfo($"dedup: {_ownedFrom} musicas locais indexadas.");
+
+        // Exporta a biblioteca pro app desktop fazer o "voce ja tem" fora do jogo.
+        try
+        {
+            var sb = new System.Text.StringBuilder(_ownedCharts.Count * 48);
+            foreach (var key in _ownedCharts) sb.Append(key).Append('\n');
+            File.WriteAllText(Path.Combine(BepInEx.Paths.GameRootPath, "backstage_library.txt"), sb.ToString());
+        }
+        catch (Exception e) { BackstagePlugin.L.LogWarning($"export da biblioteca falhou: {e.Message}"); }
     }
 
     static string Norm(string s) => (s ?? "").Trim().ToLowerInvariant();

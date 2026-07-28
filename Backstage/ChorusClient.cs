@@ -22,6 +22,7 @@ public sealed class Chart
     [JsonPropertyName("charter")] public string? Charter { get; set; }
     [JsonPropertyName("chartId")] public int ChartId { get; set; }
     [JsonPropertyName("md5")] public string Md5 { get; set; } = "";
+    [JsonPropertyName("albumArtMd5")] public string AlbumArtMd5 { get; set; }
     [JsonPropertyName("song_length")] public long? SongLengthMs { get; set; }
     [JsonPropertyName("hasVideoBackground")] public bool HasVideoBackground { get; set; }
     [JsonPropertyName("diff_guitar")] public int? DiffGuitar { get; set; }

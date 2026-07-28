@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Backstage.Desktop</RootNamespace>
+    <AssemblyName>Backstage</AssemblyName>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <!-- Motor compartilhado por FONTE (mesma decisao dos mods: um artefato por app). -->
+  <ItemGroup>
+    <Compile Include="..\Backstage\ChorusClient.cs" />
+  </ItemGroup>
+
+</Project>
