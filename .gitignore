@@ -7,3 +7,6 @@ obj/
 # Assemblies de interop geradas pelo BepInEx na maquina de quem compila.
 # Sao ~100 MB, mudam a cada versao do jogo e nao vao pro git.
 lib/
+
+# builds autocontidos para distribuicao (gerados sob demanda)
+publish/
