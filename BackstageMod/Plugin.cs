@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace Backstage;
 
-[BepInPlugin(Id, "Backstage", "0.2.0")]
+[BepInPlugin(Id, "Backstage", "0.5.0")]
 public class BackstagePlugin : BasePlugin
 {
     public const string Id = "com.iag0d.backstage";
@@ -20,7 +20,7 @@ public class BackstagePlugin : BasePlugin
     public override void Load()
     {
         L = Log;
-        L.LogInfo("Backstage 0.4.0 — by IaG0D (F5 abre/fecha)");
+        L.LogInfo("Backstage 0.5.0 — by IaG0D (F5 abre/fecha)");
         AddComponent<BackstageUI>();
 
         // O Control Remapper abre com Espaco por fora dos mapas do Rewired (Input System
@@ -78,8 +78,8 @@ public class BackstageUI : MonoBehaviour
     static readonly string[] DiffValues = { null, "expert", "hard", "medium", "easy" };
     static readonly string[] DiffNames = { "Dif: Qualquer", "Dif: Expert", "Dif: Hard", "Dif: Medium", "Dif: Easy" };
     // campo da busca: geral (tudo) ou um campo especifico via /search/advanced
-    static readonly string[] FieldValues = { null, "artist", "name", "charter", "album" };
-    static readonly string[] FieldNames = { "Em: Tudo", "Em: Artista", "Em: Música", "Em: Charter", "Em: Álbum" };
+    static readonly string[] FieldValues = { null, "artist", "name", "genre", "charter", "album" };
+    static readonly string[] FieldNames = { "Em: Tudo", "Em: Artista", "Em: Música", "Em: Gênero", "Em: Charter", "Em: Álbum" };
     static int _inst, _diff, _field;
     static int _scroll;          // primeira linha visivel dos resultados
     static bool _loadingMore;    // buscando a proxima pagina da API
@@ -303,8 +303,51 @@ public class BackstageUI : MonoBehaviour
     const string Blue = "#7fd4ff";
 
     // Texturas solidas: e o que da cara de painel de verdade em vez de caixa cinza do IMGUI.
-    static Texture2D _texPanel, _texHeader, _texRowA, _texRowB, _texInput, _texBarBg, _texBarFill, _texAccent, _texEdge;
+    static Texture2D _texPanel, _texHeader, _texRowA, _texRowB, _texInput, _texBarBg, _texBarFill, _texAccent, _texEdge, _texBtn, _texBtnHover;
     static bool _texReady, _texFailed;
+
+    // Botao com cara propria: azul-escuro, texto dourado, hover. GUIStyle customizado e
+    // outra area minada de stripping, entao tudo guardado com fallback pro botao padrao.
+    static GUIStyle _btnStyle;
+    static bool _btnTried;
+
+    static bool NiceButton(Rect r, string label)
+    {
+        if (!_btnTried)
+        {
+            _btnTried = true;
+            try
+            {
+                _btnStyle = new GUIStyle(GUI.skin.button);
+                _btnStyle.normal.background = _texBtn;
+                _btnStyle.hover.background = _texBtnHover;
+                _btnStyle.active.background = _texBtnHover;
+                _btnStyle.normal.textColor = new Color(1f, 0.84f, 0.37f);
+                _btnStyle.hover.textColor = new Color(1f, 0.92f, 0.65f);
+                _btnStyle.active.textColor = Color.white;
+                _btnStyle.richText = true;
+            }
+            catch { _btnStyle = null; }
+        }
+        try { if (_btnStyle != null) return GUI.Button(r, label, _btnStyle); }
+        catch { _btnStyle = null; }
+        return GUI.Button(r, label);
+    }
+
+    /// <summary>Previa: abre a pagina do chart no enchor.us — o player oficial do Chorus toca
+    /// a musica la. Previa nativa exigiria baixar o .sng inteiro (nao existe endpoint leve).</summary>
+    static void OpenPreview(Chart chart)
+    {
+        var url = $"https://enchor.us/chart/{chart.Md5}";
+        try { Application.OpenURL(url); return; }
+        catch { }
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception e) { _status = $"nao abriu o navegador: {e.Message}"; }
+    }
 
     /// <summary>Moldura de 2px em volta de um retangulo — o "fru fru" barato do IMGUI.</summary>
     static void Border(Rect r, Texture2D tex, float t = 2f)
@@ -337,6 +380,8 @@ public class BackstageUI : MonoBehaviour
             _texBarFill = Solid(1f, 0.84f, 0.37f, 1f);        // preenchimento dourado
             _texAccent = Solid(1f, 0.84f, 0.37f, 1f);         // dourado de destaque
             _texEdge = Solid(0.55f, 0.45f, 0.22f, 1f);        // moldura dourada escura
+            _texBtn = Solid(0.13f, 0.18f, 0.26f, 1f);         // botao azul-escuro
+            _texBtnHover = Solid(0.18f, 0.25f, 0.36f, 1f);    // botao com mouse em cima
             _texReady = true;
         }
         catch { _texFailed = true; /* cai no visual de caixas */ }
@@ -368,21 +413,21 @@ public class BackstageUI : MonoBehaviour
         Border(new Rect(x - 2, y - 2, W + 4, H + 4), _texEdge); // moldura externa
         GUI.Label(new Rect(x + 16, y + 7, 620, 24),
             $"<size=15><color={Gold}><b>♪ BACKSTAGE</b></color></size>  <color={Dim}>busca e download · Chorus Encore</color>");
-        GUI.Label(new Rect(x + W - 130, y + 9, 118, 20), $"<color={Dim}>by IaG0D · v0.3</color>");
+        GUI.Label(new Rect(x + W - 130, y + 9, 118, 20), $"<color={Dim}>by IaG0D · v0.5</color>");
 
         // busca
         Panel(new Rect(x + 16, y + 46, W - 290, 28), _texInput);
         GUI.Label(new Rect(x + 24, y + 50, W - 306, 22), $"<size=13>{_query}<color={Gold}>▌</color></size>");
-        if (GUI.Button(new Rect(x + W - 264, y + 46, 82, 28), _busy ? "..." : "Buscar") && !_busy) StartSearch();
-        if (GUI.Button(new Rect(x + W - 176, y + 46, 150, 28), FieldNames[_field]))
+        if (NiceButton(new Rect(x + W - 264, y + 46, 82, 28), _busy ? "..." : "Buscar") && !_busy) StartSearch();
+        if (NiceButton(new Rect(x + W - 176, y + 46, 150, 28), FieldNames[_field]))
         { _field = (_field + 1) % FieldValues.Length; if (_results != null) StartSearch(); }
 
         // filtros em linha propria; trocar refaz a busca na hora
-        if (GUI.Button(new Rect(x + 16, y + 80, 130, 26), InstNames[_inst]))
+        if (NiceButton(new Rect(x + 16, y + 80, 130, 26), InstNames[_inst]))
         { _inst = (_inst + 1) % InstValues.Length; if (_results != null) StartSearch(); }
-        if (GUI.Button(new Rect(x + 152, y + 80, 118, 26), DiffNames[_diff]))
+        if (NiceButton(new Rect(x + 152, y + 80, 118, 26), DiffNames[_diff]))
         { _diff = (_diff + 1) % DiffValues.Length; if (_results != null) StartSearch(); }
-        if (GUI.Button(new Rect(x + W - 44, y + 80, 28, 26), "✕")) SetVisible(false);
+        if (NiceButton(new Rect(x + W - 44, y + 80, 28, 26), "✕")) SetVisible(false);
 
         // resultados
         float rowY = y + 114;
@@ -398,8 +443,8 @@ public class BackstageUI : MonoBehaviour
             rowY += 24;
 
             // botoes de scroll na borda direita (a roda do mouse tambem funciona)
-            if (GUI.Button(new Rect(x + W - 36, rowY, 24, 100), "▲")) Scroll(-3);
-            if (GUI.Button(new Rect(x + W - 36, rowY + 112, 24, 100), "▼")) Scroll(3);
+            if (NiceButton(new Rect(x + W - 36, rowY, 24, 100), "▲")) Scroll(-3);
+            if (NiceButton(new Rect(x + W - 36, rowY + 112, 24, 100), "▼")) Scroll(3);
 
             int shown = 0;
             for (int idx = _scroll; idx < _results.Data.Count; idx++)
@@ -431,7 +476,9 @@ public class BackstageUI : MonoBehaviour
                     diff is > 0 ? $"<color={Gold}>{diff}</color>" : $"<color={Dim}>-</color>");
                 GUI.Label(new Rect(x + 662, rowY, 46, 22), $"<color={Dim}>{len}</color>");
 
-                if (GUI.Button(new Rect(x + W - 122, rowY - 1, 76, 23), ownedChart ? "de novo" : "Baixar"))
+                if (NiceButton(new Rect(x + W - 154, rowY - 1, 28, 23), "♪"))
+                    OpenPreview(chart); // previa no navegador (player oficial do Chorus)
+                if (NiceButton(new Rect(x + W - 122, rowY - 1, 76, 23), ownedChart ? "de novo" : "Baixar"))
                 {
                     _queue.Enqueue(chart);
                     _status = $"na fila: {chart.Name} ({_queue.Count} aguardando)";
@@ -465,7 +512,7 @@ public class BackstageUI : MonoBehaviour
 
         Panel(new Rect(x + 8, footY + 18, W - 16, 1), _texHeader); // separador do rodape
         var scanLabel = _completed > 0 ? $"Escanear ({_completed} baixada{(_completed > 1 ? "s" : "")})" : "Escanear biblioteca";
-        if (GUI.Button(new Rect(x + 16, footY + 24, 170, 28), scanLabel)) TriggerScan();
+        if (NiceButton(new Rect(x + 16, footY + 24, 170, 28), scanLabel)) TriggerScan();
         GUI.Label(new Rect(x + 196, footY + 28, W - 212, 20),
             $"<size=11><color={Dim}>baixe tudo primeiro e escaneie UMA vez — o scan e o da biblioteca inteira (rapido, usa cache)</color></size>");
     }
