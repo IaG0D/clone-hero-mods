@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Radar.Check</RootNamespace>
+  </PropertyGroup>
+
+  <!-- O miolo da busca nao depende de Unity, entao roda aqui fora do jogo. -->
+  <ItemGroup>
+    <Compile Include="..\Radar\SongIndex.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>Radar</AssemblyName>
+    <RootNamespace>Radar</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>0.1.0</Version>
+    <!-- Pasta do Clone Hero. Sobrescreva com a variavel de ambiente CLONEHERO_DIR
+         ou com -p:CHDir="..." se o jogo estiver em outro lugar. -->
+    <CHDir Condition="'$(CHDir)' == '' and '$(CLONEHERO_DIR)' != ''">$(CLONEHERO_DIR)</CHDir>
+    <CHDir Condition="'$(CHDir)' == ''">$(USERPROFILE)\Documents\Clone Hero</CHDir>
+  </PropertyGroup>
+
+  <Target Name="CheckCHDir" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(CHDir)\BepInEx\interop\CloneHero.dll')"
+           Text="Nao achei $(CHDir)\BepInEx\interop\CloneHero.dll. Instale o BepInEx 6 IL2CPP, rode o jogo uma vez para gerar os interop assemblies, e aponte CLONEHERO_DIR para a pasta do jogo." />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="$(CHDir)\BepInEx\core\BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\core\BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\core\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\core\0Harmony.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\Il2CppSystem.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\Il2CppSystem.Core.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\CloneHero.dll" Private="false" />
+  </ItemGroup>
+
+</Project>
