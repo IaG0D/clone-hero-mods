@@ -9,11 +9,13 @@
     <RootNamespace>Backstage.Desktop</RootNamespace>
     <AssemblyName>Backstage</AssemblyName>
     <Version>0.1.0</Version>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- Motor compartilhado por FONTE (mesma decisao dos mods: um artefato por app). -->
   <ItemGroup>
     <Compile Include="..\Backstage\ChorusClient.cs" />
+    <Resource Include="icon.ico" />
   </ItemGroup>
 
 </Project>

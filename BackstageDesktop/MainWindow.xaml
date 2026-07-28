@@ -1,7 +1,7 @@
 <Window x:Class="Backstage.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Backstage — by IaG0D" Height="760" Width="1180" MinWidth="940" MinHeight="560"
+        Title="Backstage — by IaG0D" Icon="icon.ico" Height="760" Width="1180" MinWidth="940" MinHeight="560"
         Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen">
     <Grid>
         <Grid.RowDefinitions>
