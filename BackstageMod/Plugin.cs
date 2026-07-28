@@ -236,8 +236,17 @@ public class BackstageUI : MonoBehaviour
     const string Blue = "#7fd4ff";
 
     // Texturas solidas: e o que da cara de painel de verdade em vez de caixa cinza do IMGUI.
-    static Texture2D _texPanel, _texHeader, _texRowA, _texRowB, _texInput, _texBarBg, _texBarFill, _texAccent;
+    static Texture2D _texPanel, _texHeader, _texRowA, _texRowB, _texInput, _texBarBg, _texBarFill, _texAccent, _texEdge;
     static bool _texReady, _texFailed;
+
+    /// <summary>Moldura de 2px em volta de um retangulo — o "fru fru" barato do IMGUI.</summary>
+    static void Border(Rect r, Texture2D tex, float t = 2f)
+    {
+        Panel(new Rect(r.x, r.y, r.width, t), tex);                    // topo
+        Panel(new Rect(r.x, r.yMax - t, r.width, t), tex);             // base
+        Panel(new Rect(r.x, r.y, t, r.height), tex);                   // esquerda
+        Panel(new Rect(r.xMax - t, r.y, t, r.height), tex);            // direita
+    }
 
     static Texture2D Solid(float r, float g, float b, float a)
     {
@@ -252,14 +261,15 @@ public class BackstageUI : MonoBehaviour
         if (_texReady || _texFailed) return;
         try
         {
-            _texPanel = Solid(0.07f, 0.09f, 0.12f, 0.97f);   // fundo
+            _texPanel = Solid(0.055f, 0.07f, 0.10f, 1f);      // fundo OPACO: nada vaza por tras
             _texHeader = Solid(0.10f, 0.13f, 0.17f, 1f);      // barra de titulo
-            _texRowA = Solid(0.09f, 0.11f, 0.15f, 1f);        // zebra A
-            _texRowB = Solid(0.07f, 0.09f, 0.12f, 1f);        // zebra B
-            _texInput = Solid(0.05f, 0.06f, 0.09f, 1f);       // campo de busca
-            _texBarBg = Solid(0.05f, 0.06f, 0.09f, 1f);       // trilho do progresso
+            _texRowA = Solid(0.085f, 0.105f, 0.145f, 1f);     // zebra A
+            _texRowB = Solid(0.06f, 0.075f, 0.105f, 1f);      // zebra B
+            _texInput = Solid(0.035f, 0.045f, 0.07f, 1f);     // campo de busca
+            _texBarBg = Solid(0.035f, 0.045f, 0.07f, 1f);     // trilho do progresso
             _texBarFill = Solid(1f, 0.84f, 0.37f, 1f);        // preenchimento dourado
-            _texAccent = Solid(1f, 0.84f, 0.37f, 1f);         // filete de destaque
+            _texAccent = Solid(1f, 0.84f, 0.37f, 1f);         // dourado de destaque
+            _texEdge = Solid(0.55f, 0.45f, 0.22f, 1f);        // moldura dourada escura
             _texReady = true;
         }
         catch { _texFailed = true; /* cai no visual de caixas */ }
@@ -287,10 +297,11 @@ public class BackstageUI : MonoBehaviour
 
         Panel(new Rect(x, y, W, H), _texPanel);
         Panel(new Rect(x, y, W, 34), _texHeader);
-        Panel(new Rect(x, y + 34, W, 2), _texAccent); // filete dourado sob o titulo
-        GUI.Label(new Rect(x + 16, y + 7, 560, 24),
-            $"<size=15><b><color={Gold}>BACKSTAGE</color></b></size>  <color={Dim}>busca e download · Chorus Encore</color>");
-        GUI.Label(new Rect(x + W - 96, y + 9, 84, 20), $"<color={Dim}>by IaG0D</color>");
+        Panel(new Rect(x, y + 34, W, 2), _texAccent);          // filete dourado sob o titulo
+        Border(new Rect(x - 2, y - 2, W + 4, H + 4), _texEdge); // moldura externa
+        GUI.Label(new Rect(x + 16, y + 7, 620, 24),
+            $"<size=15><color={Gold}><b>♪ BACKSTAGE</b></color></size>  <color={Dim}>busca e download · Chorus Encore</color>");
+        GUI.Label(new Rect(x + W - 130, y + 9, 118, 20), $"<color={Dim}>by IaG0D · v0.3</color>");
 
         // busca
         Panel(new Rect(x + 16, y + 46, W - 290, 28), _texInput);
@@ -374,8 +385,12 @@ public class BackstageUI : MonoBehaviour
             GUI.Label(new Rect(x + 22, footY - 2, W - 44, 20),
                 $"<size=11><color=#10151c><b>{_downloading.Name}  {_dlDone / 1048576f:F1}/{(_dlTotal > 0 ? _dlTotal / 1048576f : 0):F1} MB · fila: {_queue.Count}</b></color></size>");
         }
-        if (GUI.Button(new Rect(x + 16, footY + 22, 130, 28), "Escanear agora")) TriggerScan();
-        GUI.Label(new Rect(x + 156, footY + 26, W - 172, 22), $"<color={Dim}>{_status}</color>");
+        Panel(new Rect(x + 8, footY + 18, W - 16, 1), _texHeader); // separador do rodape
+        var scanLabel = _completed > 0 ? $"Escanear ({_completed} nova{(_completed > 1 ? "s" : "")})" : "Escanear biblioteca";
+        if (GUI.Button(new Rect(x + 16, footY + 24, 150, 28), scanLabel)) TriggerScan();
+        GUI.Label(new Rect(x + 176, footY + 28, W - 192, 22), $"<color={Dim}>{_status}</color>");
+        GUI.Label(new Rect(x + W - 330, footY + 46, 320, 18),
+            $"<size=10><color={Dim}>escaneie UMA vez depois de baixar tudo — e o Scan Songs nativo do jogo</color></size>");
     }
 
     // ---- canal de comando p/ teste autonomo (sai na 1.0) ----
