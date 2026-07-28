@@ -83,6 +83,9 @@ public class BackstageUI : MonoBehaviour
     static int _inst, _diff, _field;
     static int _scroll;          // primeira linha visivel dos resultados
     static bool _loadingMore;    // buscando a proxima pagina da API
+    static float _px = -1, _py = -1;  // posicao do painel (arrastavel); -1 = posicao padrao
+    static bool _drag;
+    static Vector2 _dragOff;
 
     /// <summary>Prefix Harmony: com o painel aberto, bloqueia o metodo original (ex.: abrir
     /// o Control Remapper com Espaco).</summary>
@@ -409,7 +412,27 @@ public class BackstageUI : MonoBehaviour
         EnsureTextures();
 
         const int W = 990, H = 480;
-        float x = (Screen.width - W) / 2f, y = Screen.height - H - 76;
+        float x = _px >= 0 ? _px : (Screen.width - W) / 2f;
+        float y = _py >= 0 ? _py : Screen.height - H - 76;
+
+        // arrastavel pela barra de titulo (mouse puro, nenhuma API stripped envolvida)
+        try
+        {
+            var mouse = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            if (Input.GetMouseButtonDown(0) && new Rect(x, y, W - 44, 34).Contains(mouse))
+            { _drag = true; _dragOff = new Vector2(mouse.x - x, mouse.y - y); }
+            if (_drag)
+            {
+                if (Input.GetMouseButton(0))
+                {
+                    _px = Mathf.Clamp(mouse.x - _dragOff.x, 80 - W, Screen.width - 80);
+                    _py = Mathf.Clamp(mouse.y - _dragOff.y, 0, Screen.height - 60);
+                    x = _px; y = _py;
+                }
+                else _drag = false;
+            }
+        }
+        catch { /* sem input legado, sem arrastar */ }
 
         Panel(new Rect(x, y, W, H), _texPanel);
         Panel(new Rect(x, y, W, 34), _texHeader);
