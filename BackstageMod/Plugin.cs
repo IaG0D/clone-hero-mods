@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace Backstage;
 
-[BepInPlugin(Id, "Backstage", "0.5.0")]
+[BepInPlugin(Id, "Backstage", "0.6.0")]
 public class BackstagePlugin : BasePlugin
 {
     public const string Id = "com.iag0d.backstage";
@@ -20,7 +20,7 @@ public class BackstagePlugin : BasePlugin
     public override void Load()
     {
         L = Log;
-        L.LogInfo("Backstage 0.5.0 — by IaG0D (F5 abre/fecha)");
+        L.LogInfo("Backstage 0.6.0 — by IaG0D (F5 abre/fecha)");
         AddComponent<BackstageUI>();
 
         // O Control Remapper abre com Espaco por fora dos mapas do Rewired (Input System
@@ -177,6 +177,10 @@ public class BackstageUI : MonoBehaviour
     }
 
     static string Norm(string s) => (s ?? "").Trim().ToLowerInvariant();
+
+    /// <summary>IMGUI nao corta texto que estoura a coluna; truncamos na mao.</summary>
+    static string Fit(string s, int max) =>
+        string.IsNullOrEmpty(s) ? "-" : s.Length <= max ? s : s[..(max - 1)] + "…";
 
     /// <summary>Move a janela de resultados; chegando perto do fim, puxa a proxima pagina.</summary>
     static void Scroll(int delta)
@@ -404,8 +408,8 @@ public class BackstageUI : MonoBehaviour
         if (!_visible) return;
         EnsureTextures();
 
-        const int W = 820, H = 460;
-        float x = (Screen.width - W) / 2f, y = Screen.height - H - 84;
+        const int W = 990, H = 480;
+        float x = (Screen.width - W) / 2f, y = Screen.height - H - 76;
 
         Panel(new Rect(x, y, W, H), _texPanel);
         Panel(new Rect(x, y, W, 34), _texHeader);
@@ -413,7 +417,7 @@ public class BackstageUI : MonoBehaviour
         Border(new Rect(x - 2, y - 2, W + 4, H + 4), _texEdge); // moldura externa
         GUI.Label(new Rect(x + 16, y + 7, 620, 24),
             $"<size=15><color={Gold}><b>♪ BACKSTAGE</b></color></size>  <color={Dim}>busca e download · Chorus Encore</color>");
-        GUI.Label(new Rect(x + W - 130, y + 9, 118, 20), $"<color={Dim}>by IaG0D · v0.5</color>");
+        GUI.Label(new Rect(x + W - 130, y + 9, 118, 20), $"<color={Dim}>by IaG0D · v0.6</color>");
 
         // busca
         Panel(new Rect(x + 16, y + 46, W - 290, 28), _texInput);
@@ -433,18 +437,20 @@ public class BackstageUI : MonoBehaviour
         float rowY = y + 114;
         if (_results != null && _results.Data.Count > 0)
         {
+            // colunas: tem | musica | artista | genero | charter | dif | tempo | ♪ | Baixar
             Panel(new Rect(x + 8, rowY - 2, W - 16, 22), _texHeader);
-            GUI.Label(new Rect(x + 16, rowY, 44, 20), $"<color={Dim}><i>tem?</i></color>");
-            GUI.Label(new Rect(x + 64, rowY, 268, 20), $"<color={Dim}><i>música</i></color>");
-            GUI.Label(new Rect(x + 336, rowY, 168, 20), $"<color={Dim}><i>artista</i></color>");
-            GUI.Label(new Rect(x + 508, rowY, 118, 20), $"<color={Dim}><i>charter</i></color>");
-            GUI.Label(new Rect(x + 630, rowY, 30, 20), $"<color={Dim}><i>dif</i></color>");
-            GUI.Label(new Rect(x + 662, rowY, 46, 20), $"<color={Dim}><i>tempo</i></color>");
+            GUI.Label(new Rect(x + 16, rowY, 46, 20), $"<color={Dim}><i>tem?</i></color>");
+            GUI.Label(new Rect(x + 66, rowY, 250, 20), $"<color={Dim}><i>música</i></color>");
+            GUI.Label(new Rect(x + 322, rowY, 158, 20), $"<color={Dim}><i>artista</i></color>");
+            GUI.Label(new Rect(x + 486, rowY, 118, 20), $"<color={Dim}><i>gênero</i></color>");
+            GUI.Label(new Rect(x + 610, rowY, 112, 20), $"<color={Dim}><i>charter</i></color>");
+            GUI.Label(new Rect(x + 728, rowY, 28, 20), $"<color={Dim}><i>dif</i></color>");
+            GUI.Label(new Rect(x + 760, rowY, 46, 20), $"<color={Dim}><i>tempo</i></color>");
             rowY += 24;
 
-            // botoes de scroll na borda direita (a roda do mouse tambem funciona)
-            if (NiceButton(new Rect(x + W - 36, rowY, 24, 100), "▲")) Scroll(-3);
-            if (NiceButton(new Rect(x + W - 36, rowY + 112, 24, 100), "▼")) Scroll(3);
+            // scroll discreto: dois botoes pequenos no canto (a roda do mouse e o principal)
+            if (NiceButton(new Rect(x + W - 40, rowY - 26, 24, 20), "▲")) Scroll(-3);
+            if (NiceButton(new Rect(x + W - 40, rowY + 8 * 28, 24, 20), "▼")) Scroll(3);
 
             int shown = 0;
             for (int idx = _scroll; idx < _results.Data.Count; idx++)
@@ -467,18 +473,19 @@ public class BackstageUI : MonoBehaviour
                 var len = chart.SongLengthMs is > 0
                     ? TimeSpan.FromMilliseconds(chart.SongLengthMs.Value).ToString(@"m\:ss") : "-";
 
-                GUI.Label(new Rect(x + 16, rowY, 44, 22),
+                GUI.Label(new Rect(x + 16, rowY, 46, 22),
                     ownedChart ? $"<color={Green}>✔ este</color>" : ownedSong ? $"<color={Blue}>≈ tem</color>" : "");
-                GUI.Label(new Rect(x + 64, rowY, 268, 22), $"<size=13>{chart.Name}</size>");
-                GUI.Label(new Rect(x + 336, rowY, 168, 22), $"<color={Dim}>{chart.Artist}</color>");
-                GUI.Label(new Rect(x + 508, rowY, 118, 22), $"<color={Dim}>{chart.Charter}</color>");
-                GUI.Label(new Rect(x + 630, rowY, 30, 22),
+                GUI.Label(new Rect(x + 66, rowY, 250, 22), $"<size=13>{Fit(chart.Name, 31)}</size>");
+                GUI.Label(new Rect(x + 322, rowY, 158, 22), $"<color={Dim}>{Fit(chart.Artist, 20)}</color>");
+                GUI.Label(new Rect(x + 486, rowY, 118, 22), $"<color={Dim}>{Fit(chart.Genre, 15)}</color>");
+                GUI.Label(new Rect(x + 610, rowY, 112, 22), $"<color={Dim}>{Fit(chart.Charter, 14)}</color>");
+                GUI.Label(new Rect(x + 728, rowY, 28, 22),
                     diff is > 0 ? $"<color={Gold}>{diff}</color>" : $"<color={Dim}>-</color>");
-                GUI.Label(new Rect(x + 662, rowY, 46, 22), $"<color={Dim}>{len}</color>");
+                GUI.Label(new Rect(x + 760, rowY, 46, 22), $"<color={Dim}>{len}</color>");
 
-                if (NiceButton(new Rect(x + W - 154, rowY - 1, 28, 23), "♪"))
+                if (NiceButton(new Rect(x + 812, rowY - 1, 26, 23), "♪"))
                     OpenPreview(chart); // previa no navegador (player oficial do Chorus)
-                if (NiceButton(new Rect(x + W - 122, rowY - 1, 76, 23), ownedChart ? "de novo" : "Baixar"))
+                if (NiceButton(new Rect(x + 844, rowY - 1, 72, 23), ownedChart ? "de novo" : "Baixar"))
                 {
                     _queue.Enqueue(chart);
                     _status = $"na fila: {chart.Name} ({_queue.Count} aguardando)";
@@ -490,7 +497,8 @@ public class BackstageUI : MonoBehaviour
                 ? " — role com a RODA do mouse"
                 : " — busca por campo mostra as primeiras 25";
             GUI.Label(new Rect(x + 16, rowY + 2, W - 32, 20),
-                $"<color={Dim}><size=11>mostrando {_scroll + 1}–{Math.Min(_scroll + 8, _results.Data.Count)} de {_results.Found}{extra}{(_loadingMore ? " · carregando mais..." : "")}</size></color>");
+                $"<color={Dim}><size=11>mostrando {_scroll + 1}–{Math.Min(_scroll + 8, _results.Data.Count)} de {_results.Found}{extra}{(_loadingMore ? " · carregando mais..." : "")}" +
+                $"      <color={Green}>✔ este</color> = já tem este chart · <color={Blue}>≈ tem</color> = tem a música por outro charter · ♪ = prévia no navegador</size></color>");
         }
         else if (_results != null)
         {
