@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- v0: console p/ validar o motor (busca + download) fora do jogo, como foi feito
+       com o indice do Radar. Vira plugin BepInEx quando o miolo estiver solido. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Backstage</RootNamespace>
+  </PropertyGroup>
+
+</Project>
