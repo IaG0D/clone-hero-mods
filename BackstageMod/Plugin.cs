@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace Backstage;
 
-[BepInPlugin(Id, "Backstage", "0.1.0")]
+[BepInPlugin(Id, "Backstage", "0.2.0")]
 public class BackstagePlugin : BasePlugin
 {
     public const string Id = "com.iag0d.backstage";
@@ -20,15 +20,15 @@ public class BackstagePlugin : BasePlugin
     public override void Load()
     {
         L = Log;
-        L.LogInfo("Backstage 0.1.0 — by IaG0D (F5 abre/fecha)");
+        L.LogInfo("Backstage 0.2.0 — by IaG0D (F5 abre/fecha)");
         AddComponent<BackstageUI>();
     }
 }
 
 /// <summary>
-/// UI v0 em IMGUI: feia de proposito, funcional primeiro (decisao do CONTEXT.md — logica
-/// com UI feia, bonita depois). Busca no Chorus, marca o que voce ja tem, fila de download
-/// com progresso, e gatilho do Scan Songs no fim.
+/// Painel de busca/download do Chorus. IMGUI (prototipo de mouse; a janela desktop separada
+/// e o proximo passo). Com o painel aberto os mapas de input do Rewired sao desligados para
+/// digitar nao navegar o menu por tras (s/a sao frets no teclado).
 /// </summary>
 public class BackstageUI : MonoBehaviour
 {
@@ -39,16 +39,26 @@ public class BackstageUI : MonoBehaviour
     static ChorusClient _chorus;
     static bool _visible;
     static string _query = "";
-    static string _status = "digite e clique Buscar";
+    static string _status = "digite a busca e aperte Enter";
     static SearchResult _results;
-    static readonly HashSet<string> _ownedSongs = new();    // artista|titulo
-    static readonly HashSet<string> _ownedCharts = new();   // artista|titulo|charter
+    static readonly HashSet<string> _ownedSongs = new();
+    static readonly HashSet<string> _ownedCharts = new();
     static int _ownedFrom = -1;
     static readonly Queue<Chart> _queue = new();
     static Chart _downloading;
     static long _dlDone, _dlTotal;
     static int _completed;
     static bool _busy;
+
+    // filtros (valores da API, mapeados do codigo do Bridge)
+    static readonly string[] InstValues = { null, "guitar", "bass", "drums", "keys" };
+    static readonly string[] InstNames = { "Inst: Qualquer", "Inst: Guitarra", "Inst: Baixo", "Inst: Bateria", "Inst: Teclas" };
+    static readonly string[] DiffValues = { null, "expert", "hard", "medium", "easy" };
+    static readonly string[] DiffNames = { "Dif: Qualquer", "Dif: Expert", "Dif: Hard", "Dif: Medium", "Dif: Easy" };
+    // campo da busca: geral (tudo) ou um campo especifico via /search/advanced
+    static readonly string[] FieldValues = { null, "artist", "name", "charter", "album" };
+    static readonly string[] FieldNames = { "Em: Tudo", "Em: Artista", "Em: Música", "Em: Charter", "Em: Álbum" };
+    static int _inst, _diff, _field;
 
     static string SongsDir => Path.Combine(BepInEx.Paths.GameRootPath, "Songs", "Backstage");
     static readonly string CmdPath = Path.Combine(BepInEx.Paths.GameRootPath, "backstage_cmd.txt");
@@ -64,11 +74,11 @@ public class BackstageUI : MonoBehaviour
 
         try
         {
-            if (Input.GetKeyDown(KeyCode.F5)) _visible = !_visible;
+            if (Input.GetKeyDown(KeyCode.F5)) SetVisible(!_visible);
+            if (_visible && Input.GetKeyDown(KeyCode.Escape)) SetVisible(false);
 
-            // Digitacao do campo de busca capturada aqui: GUI.TextField foi stripped do
-            // build IL2CPP (unstripping falha), entao o campo e Box+Label e o teclado entra
-            // por Input.inputString.
+            // GUI.TextField e stripped no IL2CPP: o campo e desenhado na mao e o teclado
+            // entra por aqui.
             if (_visible)
             {
                 foreach (var c in Input.inputString)
@@ -79,16 +89,38 @@ public class BackstageUI : MonoBehaviour
                 }
             }
         }
-        catch { /* input legado indisponivel: cmd show/hide/search cobre */ }
+        catch { /* input legado indisponivel: cmd cobre */ }
 
         RefreshOwned();
         PumpQueue();
         if (++_pollFrame >= 30) { _pollFrame = 0; PollCmd(); }
     }
 
-    /// <summary>Dedup por artista+titulo normalizados contra a lista-mestre do jogo.
-    /// ponytail: md5 local exigiria hashear 17k pastas; artista+titulo cobre o caso real
-    /// ("nao baixar o que ja tenho"). Charter junto = "ja tenho ESTE chart".</summary>
+    void OnDestroy() => SetGameInput(true); // nunca deixar o jogo sem input
+
+    static void SetVisible(bool visible)
+    {
+        _visible = visible;
+        SetGameInput(!visible);
+    }
+
+    /// <summary>Desliga/religa os mapas de input do Rewired dos jogadores. Sem isso, digitar
+    /// no painel navega o menu por tras (s/a/setas sao bindings do jogo).</summary>
+    static void SetGameInput(bool enabled)
+    {
+        try
+        {
+            var players = Rewired.ReInput.players;
+            for (int i = 0; i < players.playerCount; i++)
+                players.GetPlayer(i).controllers.maps.SetAllMapsEnabled(enabled);
+            BackstagePlugin.L.LogInfo($"input do jogo {(enabled ? "religado" : "bloqueado")}");
+        }
+        catch (Exception e)
+        {
+            BackstagePlugin.L.LogWarning($"nao consegui alternar input do jogo: {e.Message}");
+        }
+    }
+
     static void RefreshOwned()
     {
         var master = Anchors.MasterSongs;
@@ -117,16 +149,20 @@ public class BackstageUI : MonoBehaviour
         _status = $"buscando \"{_query}\"...";
         _chorus ??= new ChorusClient();
 
-        var query = _query;
+        string query = _query, inst = InstValues[_inst], diff = DiffValues[_diff], field = FieldValues[_field];
         Task.Run(async () =>
         {
             try
             {
-                var result = await _chorus.SearchAsync(query);
+                var result = field == null
+                    ? await _chorus.SearchAsync(query, inst, diff)
+                    : await _chorus.SearchFieldAsync(field, query, inst, diff);
                 _onMain.Enqueue(() =>
                 {
                     _results = result;
-                    _status = $"{result.Found} charts no Chorus para \"{query}\"";
+                    _status = $"{result.Found} charts para \"{query}\"" +
+                              (field != null ? $" em {field}" : "") +
+                              (inst != null ? $" · {inst}" : "") + (diff != null ? $" · {diff}" : "");
                     _busy = false;
                 });
             }
@@ -150,17 +186,13 @@ public class BackstageUI : MonoBehaviour
         {
             try
             {
-                var progress = new Progress<(long done, long total)>(p =>
-                {
-                    _dlDone = p.done; _dlTotal = p.total;
-                });
+                var progress = new Progress<(long done, long total)>(p => { _dlDone = p.done; _dlTotal = p.total; });
                 var path = await _chorus.DownloadSngAsync(chart, SongsDir, progress);
                 _onMain.Enqueue(() =>
                 {
                     _completed++;
                     _downloading = null;
-                    _status = $"baixado: {Path.GetFileName(path)} — {_completed} na sessao. " +
-                              "Clique 'Escanear' quando terminar a fila.";
+                    _status = $"baixado: {Path.GetFileName(path)} — clique Escanear quando terminar a fila.";
                 });
             }
             catch (Exception e)
@@ -172,8 +204,6 @@ public class BackstageUI : MonoBehaviour
 
     static SongScan FindScan()
     {
-        // Find* genericos com bool sao stripped; este e metodo il2cpp nativo de verdade
-        // (tem ponteiro no interop), e o "true" inclui objetos inativos.
         var all = UnityEngine.Object.FindObjectsOfType(
             Il2CppInterop.Runtime.Il2CppType.Of<SongScan>(), includeInactive: true);
         if (all == null) return null;
@@ -192,80 +222,160 @@ public class BackstageUI : MonoBehaviour
         try
         {
             Anchors.TriggerFullScan(scan);
-            _status = $"rescan disparado; isScanning={Anchors.IsScanning(scan)}";
-            BackstagePlugin.L.LogInfo(_status);
+            _status = "rescan rodando — a lista atualiza sozinha ao terminar.";
+            BackstagePlugin.L.LogInfo("rescan disparado");
         }
         catch (Exception e) { _status = $"scan falhou: {e.Message}"; }
     }
 
     // ---- UI ----
 
+    const string Gold = "#ffd75e";
+    const string Dim = "#9ab0c4";
+    const string Green = "#7dde8b";
+    const string Blue = "#7fd4ff";
+
+    // Texturas solidas: e o que da cara de painel de verdade em vez de caixa cinza do IMGUI.
+    static Texture2D _texPanel, _texHeader, _texRowA, _texRowB, _texInput, _texBarBg, _texBarFill, _texAccent;
+    static bool _texReady, _texFailed;
+
+    static Texture2D Solid(float r, float g, float b, float a)
+    {
+        var t = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+        t.SetPixel(0, 0, new Color(r, g, b, a));
+        t.Apply();
+        return t;
+    }
+
+    static void EnsureTextures()
+    {
+        if (_texReady || _texFailed) return;
+        try
+        {
+            _texPanel = Solid(0.07f, 0.09f, 0.12f, 0.97f);   // fundo
+            _texHeader = Solid(0.10f, 0.13f, 0.17f, 1f);      // barra de titulo
+            _texRowA = Solid(0.09f, 0.11f, 0.15f, 1f);        // zebra A
+            _texRowB = Solid(0.07f, 0.09f, 0.12f, 1f);        // zebra B
+            _texInput = Solid(0.05f, 0.06f, 0.09f, 1f);       // campo de busca
+            _texBarBg = Solid(0.05f, 0.06f, 0.09f, 1f);       // trilho do progresso
+            _texBarFill = Solid(1f, 0.84f, 0.37f, 1f);        // preenchimento dourado
+            _texAccent = Solid(1f, 0.84f, 0.37f, 1f);         // filete de destaque
+            _texReady = true;
+        }
+        catch { _texFailed = true; /* cai no visual de caixas */ }
+    }
+
+    static void Panel(Rect r, Texture2D tex)
+    {
+        if (_texReady)
+        {
+            // DrawTexture pode estar stripped (como TextField e Find*<T> estavam);
+            // na primeira falha degrada para Box e nunca mais tenta.
+            try { GUI.DrawTexture(r, tex); return; }
+            catch { _texReady = false; _texFailed = true; }
+        }
+        GUI.Box(r, "");
+    }
+
     void OnGUI()
     {
         if (!_visible) return;
+        EnsureTextures();
 
-        // Compacto e no canto de baixo, sem tampar o menu — feedback do jogador.
-        // ponytail: isto e prototipo de mouse; a versao final e tela nativa clonada do jogo.
-        const int W = 720, H = 380;
-        float x = (Screen.width - W) / 2f, y = Screen.height - H - 96;
+        const int W = 820, H = 460;
+        float x = (Screen.width - W) / 2f, y = Screen.height - H - 84;
 
-        GUI.Box(new Rect(x, y, W, H), "");
-        GUI.Label(new Rect(x + 16, y + 10, 400, 24), "<b>Backstage</b> — busca e download do Chorus Encore");
-        GUI.Label(new Rect(x + W - 110, y + 10, 100, 24), "by IaG0D");
+        Panel(new Rect(x, y, W, H), _texPanel);
+        Panel(new Rect(x, y, W, 34), _texHeader);
+        Panel(new Rect(x, y + 34, W, 2), _texAccent); // filete dourado sob o titulo
+        GUI.Label(new Rect(x + 16, y + 7, 560, 24),
+            $"<size=15><b><color={Gold}>BACKSTAGE</color></b></size>  <color={Dim}>busca e download · Chorus Encore</color>");
+        GUI.Label(new Rect(x + W - 96, y + 9, 84, 20), $"<color={Dim}>by IaG0D</color>");
 
-        // busca — campo "fake" (GUI.TextField e stripped no IL2CPP); teclado entra pelo Update
-        GUI.Box(new Rect(x + 16, y + 40, W - 200, 26), "");
-        GUI.Label(new Rect(x + 22, y + 43, W - 212, 22), (_query ?? "") + "▌");
-        if (GUI.Button(new Rect(x + W - 176, y + 40, 80, 26), _busy ? "..." : "Buscar") && !_busy)
-            StartSearch();
-        if (GUI.Button(new Rect(x + W - 90, y + 40, 74, 26), "Fechar"))
-            _visible = false;
+        // busca
+        Panel(new Rect(x + 16, y + 46, W - 290, 28), _texInput);
+        GUI.Label(new Rect(x + 24, y + 50, W - 306, 22), $"<size=13>{_query}<color={Gold}>▌</color></size>");
+        if (GUI.Button(new Rect(x + W - 264, y + 46, 82, 28), _busy ? "..." : "Buscar") && !_busy) StartSearch();
+        if (GUI.Button(new Rect(x + W - 176, y + 46, 150, 28), FieldNames[_field]))
+        { _field = (_field + 1) % FieldValues.Length; if (_results != null) StartSearch(); }
+
+        // filtros em linha propria; trocar refaz a busca na hora
+        if (GUI.Button(new Rect(x + 16, y + 80, 130, 26), InstNames[_inst]))
+        { _inst = (_inst + 1) % InstValues.Length; if (_results != null) StartSearch(); }
+        if (GUI.Button(new Rect(x + 152, y + 80, 118, 26), DiffNames[_diff]))
+        { _diff = (_diff + 1) % DiffValues.Length; if (_results != null) StartSearch(); }
+        if (GUI.Button(new Rect(x + W - 44, y + 80, 28, 26), "✕")) SetVisible(false);
 
         // resultados
-        float rowY = y + 80;
-        if (_results != null)
+        float rowY = y + 114;
+        if (_results != null && _results.Data.Count > 0)
         {
-            GUI.Label(new Rect(x + 16, rowY - 4, 60, 20), "<i>tem?</i>");
-            GUI.Label(new Rect(x + 70, rowY - 4, 330, 20), "<i>música</i>");
-            GUI.Label(new Rect(x + 404, rowY - 4, 200, 20), "<i>artista</i>");
-            GUI.Label(new Rect(x + 608, rowY - 4, 150, 20), "<i>charter</i>");
-            rowY += 22;
+            Panel(new Rect(x + 8, rowY - 2, W - 16, 22), _texHeader);
+            GUI.Label(new Rect(x + 16, rowY, 44, 20), $"<color={Dim}><i>tem?</i></color>");
+            GUI.Label(new Rect(x + 64, rowY, 268, 20), $"<color={Dim}><i>música</i></color>");
+            GUI.Label(new Rect(x + 336, rowY, 168, 20), $"<color={Dim}><i>artista</i></color>");
+            GUI.Label(new Rect(x + 508, rowY, 118, 20), $"<color={Dim}><i>charter</i></color>");
+            GUI.Label(new Rect(x + 630, rowY, 30, 20), $"<color={Dim}><i>dif</i></color>");
+            GUI.Label(new Rect(x + 662, rowY, 46, 20), $"<color={Dim}><i>tempo</i></color>");
+            rowY += 24;
 
             int shown = 0;
             foreach (var chart in _results.Data)
             {
-                if (shown++ >= 7) break; // painel compacto: 7 linhas
+                if (shown >= 8) break;
+                Panel(new Rect(x + 8, rowY - 2, W - 16, 26), shown % 2 == 0 ? _texRowA : _texRowB);
+                shown++;
+
                 var key = Norm(chart.Artist) + "|" + Norm(chart.Name);
                 var ownedChart = _ownedCharts.Contains(key + "|" + Norm(chart.Charter));
                 var ownedSong = ownedChart || _ownedSongs.Contains(key);
+                if (ownedSong) Panel(new Rect(x + 8, rowY - 2, 3, 26), _texAccent); // filete "voce tem"
 
-                GUI.Label(new Rect(x + 16, rowY, 60, 22), ownedChart ? "✔ este" : ownedSong ? "≈ tem" : "");
-                GUI.Label(new Rect(x + 70, rowY, 330, 22), chart.Name ?? "?");
-                GUI.Label(new Rect(x + 404, rowY, 200, 22), chart.Artist ?? "?");
-                GUI.Label(new Rect(x + 608, rowY, 150, 22), chart.Charter ?? "?");
+                var diff = _inst switch
+                {
+                    2 => chart.DiffBass, 3 => chart.DiffDrums, 4 => chart.DiffKeys,
+                    _ => chart.DiffGuitar,
+                };
+                var len = chart.SongLengthMs is > 0
+                    ? TimeSpan.FromMilliseconds(chart.SongLengthMs.Value).ToString(@"m\:ss") : "-";
 
-                if (GUI.Button(new Rect(x + W - 96, rowY, 80, 22), ownedChart ? "de novo" : "Baixar"))
+                GUI.Label(new Rect(x + 16, rowY, 44, 22),
+                    ownedChart ? $"<color={Green}>✔ este</color>" : ownedSong ? $"<color={Blue}>≈ tem</color>" : "");
+                GUI.Label(new Rect(x + 64, rowY, 268, 22), $"<size=13>{chart.Name}</size>");
+                GUI.Label(new Rect(x + 336, rowY, 168, 22), $"<color={Dim}>{chart.Artist}</color>");
+                GUI.Label(new Rect(x + 508, rowY, 118, 22), $"<color={Dim}>{chart.Charter}</color>");
+                GUI.Label(new Rect(x + 630, rowY, 30, 22),
+                    diff is > 0 ? $"<color={Gold}>{diff}</color>" : $"<color={Dim}>-</color>");
+                GUI.Label(new Rect(x + 662, rowY, 46, 22), $"<color={Dim}>{len}</color>");
+
+                if (GUI.Button(new Rect(x + W - 92, rowY - 1, 76, 23), ownedChart ? "de novo" : "Baixar"))
                 {
                     _queue.Enqueue(chart);
-                    _status = $"na fila: {chart.Artist} - {chart.Name} ({_queue.Count} aguardando)";
+                    _status = $"na fila: {chart.Name} ({_queue.Count} aguardando)";
                 }
-                rowY += 26;
+                rowY += 28;
             }
+
+            GUI.Label(new Rect(x + 16, rowY + 2, W - 32, 20),
+                $"<color={Dim}><size=11>mostrando {Math.Min(8, _results.Data.Count)} de {_results.Found} — refine a busca para ver outros</size></color>");
+        }
+        else if (_results != null)
+        {
+            GUI.Label(new Rect(x + 16, rowY, W - 32, 22), $"<color={Dim}>nada encontrado com esses filtros.</color>");
         }
 
-        // rodape: fila + progresso + scan
-        float footY = y + H - 66;
+        // rodape
+        float footY = y + H - 64;
         if (_downloading != null)
         {
             var pct = _dlTotal > 0 ? (float)_dlDone / _dlTotal : 0f;
-            GUI.Box(new Rect(x + 16, footY, W - 32, 20), "");
-            GUI.Box(new Rect(x + 16, footY, (W - 32) * pct, 20), "");
-            GUI.Label(new Rect(x + 22, footY, W - 44, 20),
-                $"baixando {_downloading.Artist} - {_downloading.Name}  {_dlDone / 1048576f:F1}/{(_dlTotal > 0 ? _dlTotal / 1048576f : 0):F1} MB  (fila: {_queue.Count})");
+            Panel(new Rect(x + 16, footY, W - 32, 16), _texBarBg);
+            Panel(new Rect(x + 16, footY, (W - 32) * pct, 16), _texBarFill);
+            GUI.Label(new Rect(x + 22, footY - 2, W - 44, 20),
+                $"<size=11><color=#10151c><b>{_downloading.Name}  {_dlDone / 1048576f:F1}/{(_dlTotal > 0 ? _dlTotal / 1048576f : 0):F1} MB · fila: {_queue.Count}</b></color></size>");
         }
-        if (GUI.Button(new Rect(x + 16, footY + 26, 130, 26), "Escanear agora"))
-            TriggerScan();
-        GUI.Label(new Rect(x + 156, footY + 30, W - 172, 22), _status);
+        if (GUI.Button(new Rect(x + 16, footY + 22, 130, 28), "Escanear agora")) TriggerScan();
+        GUI.Label(new Rect(x + 156, footY + 26, W - 172, 22), $"<color={Dim}>{_status}</color>");
     }
 
     // ---- canal de comando p/ teste autonomo (sai na 1.0) ----
@@ -282,8 +392,8 @@ public class BackstageUI : MonoBehaviour
             var parts = cmd.Split(' ', 2);
             switch (parts[0])
             {
-                case "show": _visible = true; break;
-                case "hide": _visible = false; break;
+                case "show": SetVisible(true); break;
+                case "hide": SetVisible(false); break;
                 case "search": _query = parts[1]; StartSearch(); break;
                 case "dl":
                     int i = int.Parse(parts[1]);

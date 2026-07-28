@@ -36,6 +36,7 @@
     <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.InputLegacyModule.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.TextRenderingModule.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\Rewired_Core.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\CloneHero.dll" Private="false" />
   </ItemGroup>
 

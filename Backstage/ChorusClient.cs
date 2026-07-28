@@ -24,6 +24,10 @@ public sealed class Chart
     [JsonPropertyName("md5")] public string Md5 { get; set; } = "";
     [JsonPropertyName("song_length")] public long? SongLengthMs { get; set; }
     [JsonPropertyName("hasVideoBackground")] public bool HasVideoBackground { get; set; }
+    [JsonPropertyName("diff_guitar")] public int? DiffGuitar { get; set; }
+    [JsonPropertyName("diff_bass")] public int? DiffBass { get; set; }
+    [JsonPropertyName("diff_drums")] public int? DiffDrums { get; set; }
+    [JsonPropertyName("diff_keys")] public int? DiffKeys { get; set; }
 }
 
 public sealed class SearchResult
@@ -54,20 +58,24 @@ public sealed class ChorusClient : IDisposable
         _http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
     }
 
-    public async Task<SearchResult> SearchAsync(string query, int page = 1, CancellationToken ct = default)
+    /// <summary>Busca geral. instrument: guitar/guitarcoop/rhythm/bass/drums/keys/guitarghl/...
+    /// difficulty: expert/hard/medium/easy. Null = sem filtro (valores da API, lidos do Bridge).</summary>
+    public async Task<SearchResult> SearchAsync(string query, string instrument = null,
+                                                string difficulty = null, int page = 1,
+                                                CancellationToken ct = default)
     {
-        var key = $"{page}|{query}";
+        var key = $"{page}|{instrument}|{difficulty}|{query}";
         if (_cache.TryGetValue(key, out var cached)) return cached;
 
         // Corpo identico ao do Bridge; "source" identifica a origem pro servidor.
         // JSON manual (sem System.Net.Http.Json): o runtime do BepInEx nao traz esse pacote.
-        var body = JsonSerializer.Serialize(new Dictionary<string, object?>
+        var body = JsonSerializer.Serialize(new Dictionary<string, object>
         {
             ["search"] = query,
             ["per_page"] = 25,
             ["page"] = page,
-            ["instrument"] = null,
-            ["difficulty"] = null,
+            ["instrument"] = instrument,
+            ["difficulty"] = difficulty,
             ["drumType"] = null,
             ["drumsReviewed"] = true,
             ["sort"] = null,
@@ -80,6 +88,60 @@ public sealed class ChorusClient : IDisposable
         var json = await response.Content.ReadAsStringAsync(ct);
         var result = JsonSerializer.Deserialize<SearchResult>(json)
                      ?? throw new InvalidOperationException("resposta vazia do /search");
+
+        _cache[key] = result;
+        return result;
+    }
+
+    /// <summary>Busca avancada: filtra por UM campo especifico (artist/name/charter/album).
+    /// Corpo completo do /search/advanced com os demais campos neutros (contrato do Bridge).</summary>
+    public async Task<SearchResult> SearchFieldAsync(string field, string value,
+                                                     string instrument = null, string difficulty = null,
+                                                     CancellationToken ct = default)
+    {
+        var key = $"adv|{field}|{instrument}|{difficulty}|{value}";
+        if (_cache.TryGetValue(key, out var cached)) return cached;
+
+        Dictionary<string, object> Text(string forField) => new()
+        {
+            ["value"] = forField == field ? value : "",
+            ["exact"] = false,
+            ["exclude"] = false,
+        };
+
+        var body = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["instrument"] = instrument,
+            ["difficulty"] = difficulty,
+            ["drumType"] = null,
+            ["drumsReviewed"] = true,
+            ["sort"] = null,
+            ["source"] = "bridge",
+            ["name"] = Text("name"),
+            ["artist"] = Text("artist"),
+            ["album"] = Text("album"),
+            ["genre"] = Text("genre"),
+            ["year"] = Text("year"),
+            ["charter"] = Text("charter"),
+            ["minLength"] = null, ["maxLength"] = null,
+            ["minIntensity"] = null, ["maxIntensity"] = null,
+            ["minAverageNPS"] = null, ["maxAverageNPS"] = null,
+            ["minMaxNPS"] = null, ["maxMaxNPS"] = null,
+            ["modifiedAfter"] = null,
+            ["hash"] = null,
+            ["hasSoloSections"] = null, ["hasForcedNotes"] = null, ["hasOpenNotes"] = null,
+            ["hasTapNotes"] = null, ["hasLyrics"] = null, ["hasVocals"] = null,
+            ["hasRollLanes"] = null, ["has2xKick"] = null, ["hasIssues"] = null,
+            ["hasVideoBackground"] = null, ["modchart"] = null,
+        });
+
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var response = await _http.PostAsync($"{Api}/search/advanced", content, ct);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync(ct);
+        var result = JsonSerializer.Deserialize<SearchResult>(json)
+                     ?? throw new InvalidOperationException("resposta vazia do /search/advanced");
+        if (result.OutOf == 0) result.OutOf = result.Found; // advanced nao devolve out_of
 
         _cache[key] = result;
         return result;
