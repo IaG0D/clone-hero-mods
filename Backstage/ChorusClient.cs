@@ -152,14 +152,15 @@ public sealed class ChorusClient : IDisposable
     /// Escreve em .tmp e renomeia no fim: o scanner do CH nunca ve arquivo pela metade.</summary>
     public async Task<string> DownloadSngAsync(Chart chart, string destFolder,
                                                IProgress<(long done, long total)>? progress = null,
-                                               CancellationToken ct = default)
+                                               CancellationToken ct = default,
+                                               bool includeVideo = false)
     {
         Directory.CreateDirectory(destFolder);
         var name = Sanitize($"{chart.Artist} - {chart.Name} ({chart.Charter})");
         var finalPath = Path.Combine(destFolder, name + ".sng");
         var tmpPath = finalPath + ".tmp";
 
-        var url = $"{Files}/{chart.Md5}{(chart.HasVideoBackground ? "_novideo" : "")}.sng";
+        var url = $"{Files}/{chart.Md5}{(chart.HasVideoBackground && !includeVideo ? "_novideo" : "")}.sng";
         using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         var total = response.Content.Headers.ContentLength ?? -1;

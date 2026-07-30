@@ -8,7 +8,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>Backstage.Desktop</RootNamespace>
     <AssemblyName>Backstage</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.12.45</Version>
     <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -16,6 +16,9 @@
   <ItemGroup>
     <Compile Include="..\Backstage\ChorusClient.cs" />
     <Resource Include="icon.ico" />
+    <Resource Include="Assets\App\*" />
+    <Resource Include="Assets\Highways\*" />
+    <Resource Include="Assets\Skins\**\*" />
   </ItemGroup>
 
 </Project>
