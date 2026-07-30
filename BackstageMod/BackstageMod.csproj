@@ -7,7 +7,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>0.1.0</Version>
+    <Version>0.9.35</Version>
     <CHDir Condition="'$(CHDir)' == '' and '$(CLONEHERO_DIR)' != ''">$(CLONEHERO_DIR)</CHDir>
     <CHDir Condition="'$(CHDir)' == ''">$(USERPROFILE)\Documents\Clone Hero</CHDir>
   </PropertyGroup>
@@ -35,9 +35,13 @@
     <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.IMGUIModule.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.InputLegacyModule.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\UnityEngine.VideoModule.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\Unity.TextMeshPro.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\Rewired_Core.dll" Private="false" />
     <Reference Include="$(CHDir)\BepInEx\interop\CloneHero.dll" Private="false" />
+    <Reference Include="$(CHDir)\BepInEx\interop\StrikeCore.dll" Private="false" />
   </ItemGroup>
 
 </Project>

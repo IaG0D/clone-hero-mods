@@ -10,3 +10,4 @@ lib/
 
 # builds autocontidos para distribuicao (gerados sob demanda)
 publish/
+tmp/
