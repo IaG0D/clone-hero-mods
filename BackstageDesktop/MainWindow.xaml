@@ -366,7 +366,7 @@
                         </Grid>
                     </Border>
                     <Grid Grid.Row="1">
-                        <TextBlock Text="68 highways · loops verticais · catálogo compacto embutido"
+                        <TextBlock Text="93 highways · loops verticais · catálogo compacto embutido"
                                    Foreground="#AAB4BE" VerticalAlignment="Center" FontSize="12"/>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                     VerticalAlignment="Center">

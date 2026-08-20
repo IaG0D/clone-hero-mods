@@ -366,6 +366,21 @@ public partial class MainWindow : Window
         new("Frost Samurai", "Anime · samurai de gelo", "Assets/Highways/frost-samurai.jpg"),
         new("Toxic Mutant", "Punk sci-fi · mutante tóxico", "Assets/Highways/toxic-mutant.jpg"),
         new("Abyssal Oracle", "Horror cósmico · oráculo abissal", "Assets/Highways/abyssal-oracle.jpg"),
+        new("Reaper's Oath", "Dark fantasy · foice, osso e sangue", "Assets/Highways/reapers-oath.jpg"),
+        new("Emberbound Camp", "Medieval · ferro, madeira e brasas", "Assets/Highways/emberbound-camp.jpg"),
+        new("Wyrmbone Abyss", "Dark fantasy · osso e escamas", "Assets/Highways/wyrmbone-abyss.jpg"),
+        new("Shadow Monarch Rift", "Anime dark · sombras violeta e azul", "Assets/Highways/shadow-monarch-rift.jpg"),
+        new("Divine Ascension", "Fantasia celestial · marfim e ouro", "Assets/Highways/divine-ascension.jpg"),
+        new("Azure Stillness", "Natureza · lago, pedra e folhas", "Assets/Highways/azure-stillness.jpg"),
+        new("Overgrown Railway", "Pós-apocalipse · aço oxidado e musgo", "Assets/Highways/overgrown-railway.jpg"),
+        new("Bocchi Feedback", "Anime musical · carvão e rosa", "Assets/Highways/bocchi-feedback.jpg"),
+        new("Crimson Inkblade", "Anime ink · pincel, lâmina e ouro", "Assets/Highways/crimson-inkblade.jpg"),
+        new("Witchlight Familiar", "Fantasia · constelações e magia", "Assets/Highways/witchlight-familiar.jpg"),
+        new("Blood Moon Katana", "Anime dark · lua de sangue e katana", "Assets/Highways/blood-moon-katana.jpg"),
+        new("Xuanling Tempest", "Fantasia oriental · pérola e energia teal", "Assets/Highways/xuanling-tempest.jpg"),
+        new("Sumi Ronin", "Sumi-e · tinta, aço e ciano", "Assets/Highways/sumi-ronin.jpg"),
+        new("Torii Afterglow", "Japão · laca, torii e pôr do sol", "Assets/Highways/torii-afterglow.jpg"),
+        new("Backstage Rift", "Sci-fi · pedra, energia azul e violeta", "Assets/Highways/backstage-rift.jpg"),
     };
 
     static readonly SkinItem[] Skins =
@@ -535,7 +550,7 @@ public partial class MainWindow : Window
         ShowSection(MusicView, $"{_ownedSongs.Count} músicas locais carregadas · digite e aperte Enter.");
 
     void HighwayNav_Checked(object sender, RoutedEventArgs e) =>
-        ShowSection(HighwayView, "78 highways prontas · aplique durante qualquer música.");
+        ShowSection(HighwayView, $"{Highways.Length} highways prontas · aplique durante qualquer música.");
 
     void BackgroundNav_Checked(object sender, RoutedEventArgs e) =>
         ShowSection(BackgroundView, "Importe uma imagem ou vídeo e aplique durante a música.");
